@@ -4,18 +4,37 @@ import os
 import time
 from functools import wraps
 import logging
+import traceback  # إضافة استيراد traceback
+import sys
 
 # إعدادات البوت (يمكنك تعديلها في متغيرات البيئة أو مباشرة هنا)
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+ADMIN_ID = os.getenv("ADMIN_ID")  # اتركها سلسلة نصية في البداية
 WELCOME_IMAGE = os.getenv("WELCOME_IMAGE", "http://postimg.cc/0MfGMb0Q")  # صورة ترحيب افتراضية
 BOT_USERNAME = os.getenv("BOT_USERNAME", "your_bot_username") # اسم البوت افتراضي
 HEARTBEAT_INTERVAL = 60  # ثانية (قابل للتعديل)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # رابط الويب هوك (ضروري لـ Railway)
+PORT = int(os.environ.get("PORT", 8080))  # منفذ الاستماع (ضروري لـ Railway)
 
 # التحقق من تحميل المتغيرات
 if not TOKEN or not ADMIN_ID:
     print("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
-    raise ValueError("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
+    print(f"TOKEN is set: {TOKEN is not None}")  # إضافة فحوصات للتحقق
+    print(f"ADMIN_ID is set: {ADMIN_ID is not None}")  # إضافة فحوصات للتحقق
+    logging.error("❌ تأكد من ضبط جميع المتغيرات في Secrets!") # Log the error
+    sys.exit(1)  # Exit with a non-zero exit code
+
+# تحويل ADMIN_ID إلى عدد صحيح هنا، بعد التأكد من وجوده
+try:
+    ADMIN_ID = int(ADMIN_ID)
+except ValueError:
+    print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+    logging.error("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+    sys.exit(1)
+except TypeError:  # في حالة كان ADMIN_ID لا يزال None
+    print("❌ ADMIN_ID غير معرّف!")
+    logging.error("❌ ADMIN_ID غير معرّف!")
+    sys.exit(1)
 
 user_message_ids = {}
 user_states = {}  # لتتبع حالة المستخدم (مثل إرسال رسالة جماعية)
@@ -53,10 +72,7 @@ def retry_on_rate_limit(max_retries=3):
 
 class Bot:
     def __init__(self):
-        self.bot = telebot.TeleBot(TOKEN)
-        self.setup_handlers()
-        self.setup_commands()
-        #self.admin_keyboard = self.create_admin_keyboard()  # لوحة مفاتيح خاصة للإدارة (تمت إزالتها)
+        self.bot = telebot.TeleBot(None)  # لا تقم بتهيئة البوت هنا
         self.user_list = self.load_user_list() # تحميل قائمة المستخدمين عند بدء التشغيل
 
     def setup_commands(self):
@@ -126,12 +142,6 @@ class Bot:
                         reply_markup=self.create_welcome_inline_buttons(),
                         parse_mode='HTML'
                     )
-                # تمت إزالة لوحة المفاتيح هنا
-                # self.bot.send_message(
-                #     message.chat.id,
-                #     "استخدم القائمة الجوة:",
-                #     reply_markup=self.create_keyboard()
-                # )
 
                 if message.from_user.id != ADMIN_ID:
                     new_user_info = f"""
@@ -144,7 +154,7 @@ class Bot:
                     logging.info(f"New user: {message.from_user.id}")
 
             except Exception as e:
-                logging.exception("Error in start handler:")
+                logging.exception(f"Error in start handler: {traceback.format_exc()}")
                 self.bot.reply_to(message, "عذرًا، صار خلل. حاول مرة لخ.")
 
         @self.bot.callback_query_handler(func=lambda call: True)
@@ -201,7 +211,7 @@ class Bot:
                         logging.warning(f"Failed to send message to {user_id}: {e}")
                 self.bot.reply_to(message, f"تم إرسال الرسالة إلى {count} مستخدم.")
             except Exception as e:
-                logging.exception("Error during broadcast:")
+                logging.exception(f"Error during broadcast: {traceback.format_exc()}")
                 self.bot.reply_to(message, "صار خلل أثناء إرسال الرسالة.")
             finally:
                 user_states[message.from_user.id] = None  # reset state
@@ -209,16 +219,6 @@ class Bot:
         @self.bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'sticker', 'document'])
         def handle_messages(message):
             try:
-                # تمت إزالة فحص الأوامر النصية (📞 احجي وياي و ❓ المساعدة)
-                # إذا وصل المستخدم إلى هنا، فإننا نتعامل معه كما لو أنه يريد "احجي وياي"
-                # if message.text == "📞 احجي وياي":
-                #     contact_text = "دز رسالتك و ارد عليك."
-                #     self.bot.reply_to(message, contact_text)
-                # elif message.text == "❓ المساعدة":
-                #     help_text = "شلون اكدر اساعدك اليوم؟"
-                #     self.bot.reply_to(message, help_text)
-                # else:
-                # معالجة الرسائل العادية (إعادة توجيه إلى المسؤول أو الرد التلقائي)
                 self.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
                 self.bot.reply_to(message, "وصلت رسالتك للمسؤول. شكراً لتواصلج 😉 .") # تعديل: صيغة المؤنث ورمز تعبيري
 
@@ -230,7 +230,7 @@ class Bot:
                     logging.info(f"New user: {message.from_user.id}")
 
             except Exception as e:
-                logging.exception("Error handling message:")
+                logging.exception(f"Error handling message: {traceback.format_exc()}")
                 self.bot.reply_to(message, "صار خلل. حاول مرة لخ.")
 
     @retry_on_rate_limit()
