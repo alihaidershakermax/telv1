@@ -7,30 +7,12 @@ import logging
 import traceback  # إضافة استيراد traceback
 
 # إعدادات البوت (يمكنك تعديلها في متغيرات البيئة أو مباشرة هنا)
-TOKEN = os.getenv("TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")  # اتركها سلسلة نصية في البداية
+# لا تقم بتحميل المتغيرات هنا، قم بتحميلها داخل run()
 WELCOME_IMAGE = os.getenv("WELCOME_IMAGE", "http://postimg.cc/0MfGMb0Q")  # صورة ترحيب افتراضية
 BOT_USERNAME = os.getenv("BOT_USERNAME", "your_bot_username") # اسم البوت افتراضي
 HEARTBEAT_INTERVAL = 60  # ثانية (قابل للتعديل)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # رابط الويب هوك (ضروري لـ Railway)
 PORT = int(os.environ.get("PORT", 8080))  # منفذ الاستماع (ضروري لـ Railway)
-
-# التحقق من تحميل المتغيرات
-if not TOKEN or not ADMIN_ID:
-    print("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
-    print(f"TOKEN is set: {TOKEN is not None}")  # إضافة فحوصات للتحقق
-    print(f"ADMIN_ID is set: {ADMIN_ID is not None}")  # إضافة فحوصات للتحقق
-    raise ValueError("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
-
-# تحويل ADMIN_ID إلى عدد صحيح هنا، بعد التأكد من وجوده
-try:
-    ADMIN_ID = int(ADMIN_ID)
-except ValueError:
-    print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
-    raise ValueError("❌ ADMIN_ID ليس رقمًا صحيحًا!")
-except TypeError:  # في حالة كان ADMIN_ID لا يزال None
-    print("❌ ADMIN_ID غير معرّف!")
-    raise ValueError("❌ ADMIN_ID غير معرّف!")
 
 user_message_ids = {}
 user_states = {}  # لتتبع حالة المستخدم (مثل إرسال رسالة جماعية)
@@ -68,10 +50,7 @@ def retry_on_rate_limit(max_retries=3):
 
 class Bot:
     def __init__(self):
-        self.bot = telebot.TeleBot(TOKEN)
-        self.setup_handlers()
-        self.setup_commands()
-        #self.admin_keyboard = self.create_admin_keyboard()  # لوحة مفاتيح خاصة للإدارة (تمت إزالتها)
+        self.bot = telebot.TeleBot(None)  # لا تقم بتهيئة البوت هنا
         self.user_list = self.load_user_list() # تحميل قائمة المستخدمين عند بدء التشغيل
 
     def setup_commands(self):
@@ -250,12 +229,38 @@ class Bot:
         print("✅ البوت يشتغل...")
         print("Checking environment variables during startup...") # إضافة فحص للمتغيرات
 
-        print(f"TOKEN: {os.getenv('TOKEN')}")  # عرض قيم المتغيرات
-        print(f"ADMIN_ID: {os.getenv('ADMIN_ID')}")
-        print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL')}")
-        print(f"PORT: {os.getenv('PORT')}")
+        TOKEN = os.getenv('TOKEN') # الوصول إلى المتغيرات هنا
+        ADMIN_ID = os.getenv('ADMIN_ID')
+        WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+        PORT = os.getenv('PORT')
+
+        print(f"TOKEN: {TOKEN}")  # عرض قيم المتغيرات
+        print(f"ADMIN_ID: {ADMIN_ID}")
+        print(f"WEBHOOK_URL: {WEBHOOK_URL}")
+        print(f"PORT: {PORT}")
 
         print("Environment variables check complete.")
+
+        if not TOKEN or not ADMIN_ID:  # التحقق مرة أخرى هنا
+            print("❌ المتغيرات TOKEN أو ADMIN_ID غير معرّفة حتى داخل run()!")
+            raise ValueError("❌ المتغيرات TOKEN أو ADMIN_ID غير معرّفة حتى داخل run()!")
+
+        try:
+            ADMIN_ID = int(ADMIN_ID)  # التحويل إلى عدد صحيح هنا
+        except ValueError:
+            print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+            raise ValueError("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+        except TypeError:
+            print("❌ ADMIN_ID غير معرّف!")
+            raise ValueError("❌ ADMIN_ID غير معرّف!")
+
+        try:
+            self.bot = telebot.TeleBot(TOKEN)  # تهيئة البوت هنا
+            self.setup_commands() # إعداد الأوامر هنا
+            self.setup_handlers() # إعداد المعالجات هنا
+        except Exception as e:
+            logging.exception(f"Failed to initialize bot: {traceback.format_exc()}")
+            raise  # إعادة رفع الاستثناء
 
         if WEBHOOK_URL:
             # إعداد الويب هوك
@@ -281,7 +286,7 @@ class Bot:
 
                     # ارسال رسالة "نبض قلب" للمحافظة على البوت قيد التشغيل.  (مهم!)
                     if not self.send_heartbeat():
-                        logging.warning("فشل إرسال نبض القلب. سيتم إعادة المحاولة لاحقًا.")
+                        logging.warning("فشل إرسال رسالة نبض القلب. سيتم إعادة المحاولة لاحقًا.")
 
                 except Exception as e:
                     logging.exception(f"خطأ في الحلقة الرئيسية: {traceback.format_exc()}")
@@ -315,6 +320,4 @@ if __name__ == "__main__":
         # تشغيل تطبيق Flask للتعامل مع الويب هوك
         import threading
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)).start()
-        print(f"✅ Flask app started on port {PORT} for webhook.")
-    else:
-        bot.run()  # التشغيل في وضع الاستطلاع الطويل
+        print(f"✅ Flask app started on port {PORT} for webhook
