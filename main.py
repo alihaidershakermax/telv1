@@ -8,7 +8,7 @@ import traceback  # إضافة استيراد traceback
 
 # إعدادات البوت (يمكنك تعديلها في متغيرات البيئة أو مباشرة هنا)
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+ADMIN_ID = os.getenv("ADMIN_ID")  # اتركها سلسلة نصية في البداية
 WELCOME_IMAGE = os.getenv("WELCOME_IMAGE", "http://postimg.cc/0MfGMb0Q")  # صورة ترحيب افتراضية
 BOT_USERNAME = os.getenv("BOT_USERNAME", "your_bot_username") # اسم البوت افتراضي
 HEARTBEAT_INTERVAL = 60  # ثانية (قابل للتعديل)
@@ -18,7 +18,19 @@ PORT = int(os.environ.get("PORT", 8080))  # منفذ الاستماع (ضرور�
 # التحقق من تحميل المتغيرات
 if not TOKEN or not ADMIN_ID:
     print("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
+    print(f"TOKEN is set: {TOKEN is not None}")  # إضافة فحوصات للتحقق
+    print(f"ADMIN_ID is set: {ADMIN_ID is not None}")  # إضافة فحوصات للتحقق
     raise ValueError("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
+
+# تحويل ADMIN_ID إلى عدد صحيح هنا، بعد التأكد من وجوده
+try:
+    ADMIN_ID = int(ADMIN_ID)
+except ValueError:
+    print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+    raise ValueError("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+except TypeError:  # في حالة كان ADMIN_ID لا يزال None
+    print("❌ ADMIN_ID غير معرّف!")
+    raise ValueError("❌ ADMIN_ID غير معرّف!")
 
 user_message_ids = {}
 user_states = {}  # لتتبع حالة المستخدم (مثل إرسال رسالة جماعية)
@@ -129,12 +141,6 @@ class Bot:
                         reply_markup=self.create_welcome_inline_buttons(),
                         parse_mode='HTML'
                     )
-                # تمت إزالة لوحة المفاتيح هنا
-                # self.bot.send_message(
-                #     message.chat.id,
-                #     "استخدم القائمة الجوة:",
-                #     reply_markup=self.create_keyboard()
-                # )
 
                 if message.from_user.id != ADMIN_ID:
                     new_user_info = f"""
@@ -212,16 +218,6 @@ class Bot:
         @self.bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'sticker', 'document'])
         def handle_messages(message):
             try:
-                # تمت إزالة فحص الأوامر النصية (📞 احجي وياي و ❓ المساعدة)
-                # إذا وصل المستخدم إلى هنا، فإننا نتعامل معه كما لو أنه يريد "احجي وياي"
-                # if message.text == "📞 احجي وياي":
-                #     contact_text = "دز رسالتك و ارد عليك."
-                #     self.bot.reply_to(message, contact_text)
-                # elif message.text == "❓ المساعدة":
-                #     help_text = "شلون اكدر اساعدك اليوم؟"
-                #     self.bot.reply_to(message, help_text)
-                # else:
-                # معالجة الرسائل العادية (إعادة توجيه إلى المسؤول أو الرد التلقائي)
                 self.bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
                 self.bot.reply_to(message, "وصلت رسالتك للمسؤول. شكراً لتواصلج 😉 .") # تعديل: صيغة المؤنث ورمز تعبيري
 
@@ -252,6 +248,14 @@ class Bot:
 
     def run(self):
         print("✅ البوت يشتغل...")
+        print("Checking environment variables during startup...") # إضافة فحص للمتغيرات
+
+        print(f"TOKEN: {os.getenv('TOKEN')}")  # عرض قيم المتغيرات
+        print(f"ADMIN_ID: {os.getenv('ADMIN_ID')}")
+        print(f"WEBHOOK_URL: {os.getenv('WEBHOOK_URL')}")
+        print(f"PORT: {os.getenv('PORT')}")
+
+        print("Environment variables check complete.")
 
         if WEBHOOK_URL:
             # إعداد الويب هوك
@@ -261,7 +265,6 @@ class Bot:
             print("⚠️ لم يتم العثور على رابط الويب هوك.  التشغيل في وضع الاستطلاع الطويل.")
             self.bot.remove_webhook()  # إزالة أي ويب هوك موجود
             self.bot.infinity_polling() #  التشغيل في وضع الاستطلاع الطويل
-
 
         start_time = time.time()  # تسجيل وقت بدء التشغيل
 
@@ -305,7 +308,6 @@ if WEBHOOK_URL:
     def health_check():
         return "Bot is running!", 200
 
-
 if __name__ == "__main__":
     bot = Bot()
 
@@ -314,6 +316,5 @@ if __name__ == "__main__":
         import threading
         threading.Thread(target=lambda: app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)).start()
         print(f"✅ Flask app started on port {PORT} for webhook.")
-
     else:
         bot.run()  # التشغيل في وضع الاستطلاع الطويل
