@@ -1,32 +1,25 @@
 import telebot
-from telebot.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, InputMediaPhoto, InputMediaVideo
+from telebot.types import Message
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand, InputMediaPhoto, InputMediaVideo
 import os
 import time
 from functools import wraps
 import logging
 import traceback  # إضافة استيراد traceback
 import sys
-
-# إعدادات البوت (يمكنك تعديلها في متغيرات البيئة أو مباشرة هنا)
-TOKEN = os.getenv("TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID")  # اتركها سلسلة نصية في البداية
-WELCOME_IMAGE = os.getenv("WELCOME_IMAGE", "http://postimg.cc/0MfGMb0Q")  # صورة ترحيب افتراضية
-BOT_USERNAME = os.getenv("BOT_USERNAME", "your_bot_username") # اسم البوت افتراضي
-HEARTBEAT_INTERVAL = 60  # ثانية (قابل للتعديل)
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # رابط الويب هوك (ضروري لـ Railway)
-PORT = int(os.environ.get("PORT", 8080))  # منفذ الاستماع (ضروري لـ Railway)
+from config import Config  # استيراد فئة Config
 
 # التحقق من تحميل المتغيرات
-if not TOKEN or not ADMIN_ID:
+if not Config.TOKEN or not Config.ADMIN_ID:
     print("❌ تأكد من ضبط جميع المتغيرات في Secrets!")
-    print(f"TOKEN is set: {TOKEN is not None}")  # إضافة فحوصات للتحقق
-    print(f"ADMIN_ID is set: {ADMIN_ID is not None}")  # إضافة فحوصات للتحقق
+    print(f"TOKEN is set: {Config.TOKEN is not None}")  # إضافة فحوصات للتحقق
+    print(f"ADMIN_ID is set: {Config.ADMIN_ID is not None}")  # إضافة فحوصات للتحقق
     logging.error("❌ تأكد من ضبط جميع المتغيرات في Secrets!") # Log the error
     sys.exit(1)  # Exit with a non-zero exit code
 
 # تحويل ADMIN_ID إلى عدد صحيح هنا، بعد التأكد من وجوده
 try:
-    ADMIN_ID = int(ADMIN_ID)
+    ADMIN_ID = int(Config.ADMIN_ID)
 except ValueError:
     print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
     logging.error("❌ ADMIN_ID ليس رقمًا صحيحًا!")
@@ -244,12 +237,59 @@ class Bot:
             logging.warning(f"فشل إرسال رسالة نبض القلب: {e}")
             return False # للإشارة إلى الفشل
         except Exception as e:
-            logging.exception(f"خطأ غير متوقع أثناء إرسال نبض القلب: {e}")
+            logging.exception(f"خطأ غير متوقع أثناء إرسال نبض القلب: {traceback.format_exc()}")
             return False
 
     def run(self):
         print("✅ البوت يشتغل...")
-        self.bot.remove_webhook()  # إزالة الويب هوك
+
+        TOKEN = Config.TOKEN
+        ADMIN_ID = Config.ADMIN_ID
+        WEBHOOK_URL = Config.WEBHOOK_URL
+        PORT = Config.PORT
+
+        print("Checking environment variables during startup...") # إضافة فحص للمتغيرات
+
+        print(f"TOKEN: {TOKEN}")  # عرض قيم المتغيرات
+        print(f"ADMIN_ID: {ADMIN_ID}")
+        print(f"WEBHOOK_URL: {WEBHOOK_URL}")
+        print(f"PORT: {PORT}")
+
+        print("Environment variables check complete.")
+
+        if not TOKEN or not ADMIN_ID:  # التحقق مرة أخرى هنا
+            print("❌ المتغيرات TOKEN أو ADMIN_ID غير معرّفة حتى داخل run()!")
+            logging.error("❌ المتغيرات TOKEN أو ADMIN_ID غير معرّفة حتى داخل run()!")
+            sys.exit(1)
+
+        try:
+            ADMIN_ID = int(ADMIN_ID)  # التحويل إلى عدد صحيح هنا
+        except ValueError:
+            print("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+            logging.error("❌ ADMIN_ID ليس رقمًا صحيحًا!")
+            sys.exit(1)
+        except TypeError:
+            print("❌ ADMIN_ID غير معرّف!")
+            logging.error("❌ ADMIN_ID غير معرّف!")
+            sys.exit(1)
+
+        try:
+            self.bot = telebot.TeleBot(TOKEN)  # تهيئة البوت هنا
+            self.setup_commands() # إعداد الأوامر هنا
+            self.setup_handlers() # إعداد المعالجات هنا
+        except Exception as e:
+            logging.exception(f"Failed to initialize bot: {traceback.format_exc()}")
+            logging.error(f"Failed to initialize bot: {traceback.format_exc()}")
+            sys.exit(1)
+
+        if WEBHOOK_URL:
+            # إعداد الويب هوك
+            self.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+            print(f"✅ تم إعداد الويب هوك على: {WEBHOOK_URL}/{TOKEN}")
+        else:
+            print("⚠️ لم يتم العثور على رابط الويب هوك.  التشغيل في وضع الاستطلاع الطويل.")
+            self.bot.remove_webhook()  # إزالة أي ويب هوك موجود
+            self.bot.infinity_polling() #  التشغيل في وضع الاستطلاع الطويل
 
         start_time = time.time()  # تسجيل وقت بدء التشغيل
 
